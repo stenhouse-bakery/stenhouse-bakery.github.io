@@ -47,6 +47,12 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
 .b-picked{background:var(--green-soft);color:var(--green)}
 .b-part{background:var(--amber-soft);color:var(--amber)}
 .b-billed{background:#e8e8e8;color:#555}
+.b-weekly{background:#efe4f7;color:#6b3fa0}
+.rep{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+.rep input{width:18px;height:18px;accent-color:var(--brand)}
+.rep select{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:14px}
+.rep select:disabled{opacity:.5}
+.rephint{font-size:12px;color:var(--muted);margin-top:4px}
 .order-body{border-top:1px solid var(--line);padding:10px 14px 14px;display:none}
 .order.open .order-body{display:block}
 .meta{font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.5}
@@ -157,6 +163,17 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
       <button class="btn" style="width:100%;margin-top:4px" onclick="addItemRow()">+ Add item</button>
     </div>
     <div class="fld"><label>Notes (optional)</label><textarea id="f-notes" rows="2" placeholder="Anything to remember"></textarea></div>
+    <div class="fld" id="f-repeat-wrap" style="display:none">
+      <label>Standing order</label>
+      <div class="rep">
+        <input type="checkbox" id="f-repeat" onchange="repeatChanged()">
+        <span>Repeat every</span>
+        <select id="f-weekday">
+          <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+        </select>
+      </div>
+      <div class="rephint" id="f-repeat-hint" style="display:none">It adds itself to the board every week</div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn" style="flex:1" onclick="closeSheet()">Cancel</button>
       <button class="btn primary" id="savebtn" style="flex:2;padding:11px" onclick="saveOrder()">Save order</button>
@@ -177,7 +194,7 @@ const CONFIG = {
 /* =========================================== */
 
 const $ = s => document.querySelector(s);
-const state = { day: todayStr(), filter:'all', orders:[], openId:null, user:null, fulfil:'pickup', editing:null };
+const state = { day: todayStr(), filter:'all', orders:[], openId:null, user:null, fulfil:'pickup', editing:null, templates:[] };
 
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function uid(){ return (crypto.randomUUID?crypto.randomUUID():'id'+Date.now()+Math.random().toString(16).slice(2)); }
@@ -247,6 +264,18 @@ const SupabaseDriver = {
   },
   async remove(id){
     await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?id=eq.'+id,{method:'DELETE',headers:this.h()});
+  },
+  async listTemplates(){
+    const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/standing_orders?active=is.true&select=*&order=created_at.asc',{headers:this.h()});
+    if(!r.ok) throw new Error('sync failed'); return await r.json();
+  },
+  async createTemplate(t){
+    const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/standing_orders',{method:'POST',headers:this.h(),body:JSON.stringify(t)});
+    if(!r.ok) throw new Error('save failed'); const [saved]=await r.json(); return saved;
+  },
+  async updateTemplate(id,patch){
+    const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/standing_orders?id=eq.'+id,{method:'PATCH',headers:this.h(),body:JSON.stringify(patch)});
+    if(!r.ok) throw new Error('save failed');
   }
 };
 const DB = () => CONFIG.DRIVER==='supabase' ? SupabaseDriver : LocalDriver;
@@ -280,11 +309,37 @@ function setDay(ds){ if(!ds)return; state.day=ds; render(); refresh(); }
 function shiftDay(n){ const d=new Date(state.day+'T12:00:00'); d.setDate(d.getDate()+n); setDay(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); }
 function goToday(){ setDay(todayStr()); }
 function setFilter(f){ state.filter=f; document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.f===f)); renderOrders(); }
+function weekdayOf(ds){ return new Date(ds+'T12:00:00').getDay(); }
+function repeatChanged(){ const on=$('#f-repeat').checked; $('#f-weekday').disabled=!on; $('#f-repeat-hint').style.display=on?'block':'none'; }
+async function ensureStanding(day){
+  if(CONFIG.DRIVER!=='supabase') return;
+  let templates;
+  try{ templates=await SupabaseDriver.listTemplates(); }catch(e){ return; }
+  state.templates=templates;
+  if(day<todayStr()) return;
+  const wd=weekdayOf(day);
+  let changed=false;
+  for(const t of templates){
+    if(Number(t.weekday)!==wd) continue;
+    if(t.start_day&&day<t.start_day) continue;
+    if((t.skipped_days||[]).includes(day)) continue;
+    if(state.orders.some(o=>o.standing_id===t.id)) continue;
+    const o={
+      id:uid(), day, customer:t.customer, phone:t.phone||'', fulfillment:t.fulfillment||'pickup',
+      address:t.address||'', notes:t.notes||'', billed:false, standing_id:t.id,
+      items:(Array.isArray(t.items)?t.items:[]).map(it=>({id:uid(),name:it.name,qty:it.qty,picked:0})),
+      created_by:t.created_by||'', created_at:new Date().toISOString(), updated_at:new Date().toISOString()
+    };
+    try{ await DB().create(o); changed=true; }catch(e){ changed=true; }
+  }
+  if(changed){ try{ state.orders=await DB().list(day); }catch(e){} }
+}
 
 /* ---------- data ---------- */
 async function refresh(){
   try{
     state.orders=await DB().list(state.day);
+    await ensureStanding(state.day);
     $('#syncdot').className='syncdot';
     renderOrders(); renderSummary();
   }catch(e){ $('#syncdot').className='syncdot off'; }
@@ -345,6 +400,7 @@ function renderOrders(){
       <button class="order-head" onclick="toggleOpen('${o.id}')">
         <span class="nm">${esc(o.customer)}</span>
         <span class="badge ${o.fulfillment==='delivery'?'b-delivery':'b-pickup'}">${o.fulfillment==='delivery'?'Delivery':'Pickup'}</span>
+        ${o.standing_id?'<span class="badge b-weekly">Weekly</span>':''}
         ${stBadge}
         <span style="font-size:12px;color:var(--muted)">${pk}/${tot}</span>
       </button>
@@ -400,9 +456,24 @@ async function toggleBilled(oid){
 
 async function delOrder(oid){
   if(!confirm('Delete this order?'))return;
+  const o=state.orders.find(x=>x.id===oid);
+  let stopSeries=false;
+  if(o && o.standing_id){
+    stopSeries=confirm('This order repeats every week. Press OK to also stop all future repeats, or Cancel to delete just this one.');
+  }
   state.orders=state.orders.filter(x=>x.id!==oid);
   renderOrders(); renderSummary();
-  try{ await DB().remove(oid); }catch(e){ toast('Sync failed'); refresh(); }
+  try{
+    if(o && o.standing_id){
+      const t=state.templates.find(x=>x.id===o.standing_id);
+      if(t){
+        if(stopSeries){ await SupabaseDriver.updateTemplate(t.id,{active:false,updated_at:new Date().toISOString()}); state.templates=state.templates.filter(x=>x.id!==t.id); }
+        else { const sd=[...(t.skipped_days||[]),o.day]; await SupabaseDriver.updateTemplate(t.id,{skipped_days:sd,updated_at:new Date().toISOString()}); t.skipped_days=sd; }
+      }
+    }
+    await DB().remove(oid);
+    if(stopSeries) toast('Order deleted and weekly repeat stopped');
+  }catch(e){ toast('Sync failed'); refresh(); }
 }
 
 /* ---------- new order sheet ---------- */
@@ -434,6 +505,8 @@ function openNew(){
   state.fulfil='pickup'; setFulfil('pickup');
   $('#f-customer').value=''; $('#f-phone').value=''; $('#f-address').value=''; $('#f-notes').value='';
   $('#items').innerHTML=''; addItemRow();
+  $('#f-repeat-wrap').style.display=CONFIG.DRIVER==='supabase'?'block':'none';
+  $('#f-repeat').checked=false; $('#f-weekday').value=String(weekdayOf(state.day)); repeatChanged();
   $('#overlay').classList.add('open');
   setTimeout(()=>$('#f-customer').focus(),100);
 }
@@ -447,6 +520,11 @@ function openEdit(oid){
   $('#items').innerHTML='';
   o.items.forEach(it=>addItemRow(it.name,Number(it.qty),it.id,Number(it.picked)||0));
   if(!o.items.length) addItemRow();
+  $('#f-repeat-wrap').style.display=CONFIG.DRIVER==='supabase'?'block':'none';
+  const tpl=o.standing_id?state.templates.find(x=>x.id===o.standing_id):null;
+  $('#f-repeat').checked=!!tpl;
+  $('#f-weekday').value=String(tpl?Number(tpl.weekday):weekdayOf(state.day));
+  repeatChanged();
   $('#overlay').classList.add('open');
 }
 function closeSheet(){ $('#overlay').classList.remove('open'); }
@@ -471,6 +549,21 @@ async function saveOrder(){
     const oid=state.editing;
     const prev=state.orders.find(x=>x.id===oid);
     if(!prev){ closeSheet(); return; }
+    if(CONFIG.DRIVER==='supabase'){
+      const prevTpl=prev.standing_id?state.templates.find(x=>x.id===prev.standing_id):null;
+      const repeatOn=$('#f-repeat').checked, repeatWd=parseInt($('#f-weekday').value);
+      try{
+        if(repeatOn){
+          const tplF={weekday:repeatWd,customer:fields.customer,phone:fields.phone,fulfillment:fields.fulfillment,address:fields.address,notes:fields.notes,items:items.map(it=>({name:it.name,qty:it.qty})),updated_at:new Date().toISOString()};
+          if(prevTpl){ await SupabaseDriver.updateTemplate(prevTpl.id,tplF); Object.assign(prevTpl,tplF); fields.standing_id=(repeatWd===weekdayOf(prev.day))?prevTpl.id:null; }
+          else { const tpl=await SupabaseDriver.createTemplate({...tplF,start_day:todayStr(),created_by:state.user}); state.templates.push(tpl); if(repeatWd===weekdayOf(prev.day)) fields.standing_id=tpl.id; }
+        } else if(prevTpl){
+          await SupabaseDriver.updateTemplate(prevTpl.id,{active:false,updated_at:new Date().toISOString()});
+          state.templates=state.templates.filter(x=>x.id!==prevTpl.id);
+          fields.standing_id=null;
+        }
+      }catch(e){ toast('The weekly repeat failed to save - saving the order anyway'); }
+    }
     const backup=JSON.parse(JSON.stringify(prev));
     Object.assign(prev,fields); prev.items=items;
     closeSheet();
@@ -487,7 +580,18 @@ async function saveOrder(){
   };
   closeSheet();
   state.orders.push(o); state.openId=o.id; renderOrders(); renderSummary();
-  try{ await DB().create(o); toast('Order saved'); refresh(); }
+  try{
+    await DB().create(o);
+    if(CONFIG.DRIVER==='supabase' && $('#f-repeat').checked){
+      try{
+        const tpl=await SupabaseDriver.createTemplate({weekday:parseInt($('#f-weekday').value),customer:fields.customer,phone:fields.phone,fulfillment:fields.fulfillment,address:fields.address,notes:fields.notes,items:items.map(it=>({name:it.name,qty:it.qty})),start_day:todayStr(),created_by:state.user});
+        state.templates.push(tpl);
+        if(parseInt($('#f-weekday').value)===weekdayOf(o.day)){ await DB().update(o.id,{standing_id:tpl.id}); o.standing_id=tpl.id; }
+        toast('Order saved - repeats every '+$('#f-weekday').selectedOptions[0].text);
+      }catch(e2){ toast('Order saved, but the weekly repeat failed'); }
+    } else toast('Order saved');
+    refresh();
+  }
   catch(e){ toast('Sync failed - check connection'); state.orders=state.orders.filter(x=>x.id!==o.id); renderOrders(); }
 }
 
