@@ -58,6 +58,11 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
 .stepper button{width:34px;height:34px;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-size:18px;font-weight:700}
 .stepper button:disabled{opacity:.3}
 .stepper .pv{min-width:52px;text-align:center;font-size:14px;font-weight:600}
+.ticks{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.tick{width:30px;height:30px;border-radius:8px;border:2px solid var(--brand);background:#fff;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;padding:0}
+.tick.on{background:var(--brand)}
+.tick.on::after{content:'\2713'}
+.tickcount{font-size:12px;color:var(--muted);margin-right:2px}
 .item.done .inm{text-decoration:line-through;color:var(--muted)}
 .acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .btn{padding:9px 16px;border-radius:10px;font-size:14px;font-weight:600;border:1px solid var(--line);background:var(--card)}
@@ -153,7 +158,7 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
     <div class="fld"><label>Notes (optional)</label><textarea id="f-notes" rows="2" placeholder="Anything to remember"></textarea></div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn" style="flex:1" onclick="closeSheet()">Cancel</button>
-      <button class="btn primary" style="flex:2;padding:11px" onclick="saveOrder()">Save order</button>
+      <button class="btn primary" id="savebtn" style="flex:2;padding:11px" onclick="saveOrder()">Save order</button>
     </div>
   </div>
 </div>
@@ -186,6 +191,7 @@ const LocalDriver = {
   async list(day){ return this._all().filter(o=>o.day===day).sort((a,b)=>a.created_at-b.created_at); },
   async create(o){ const a=this._all(); a.push(o); this._save(a); return o; },
   async update(id,patch){ const a=this._all(); const i=a.findIndex(o=>o.id===id); if(i<0)return; a[i]={...a[i],...patch,updated_at:Date.now()}; this._save(a); return a[i]; },
+  async saveEdit(id,fields,items){ const a=this._all(); const i=a.findIndex(o=>o.id===id); if(i<0)return; a[i]={...a[i],...fields,items,updated_at:Date.now()}; this._save(a); return a[i]; },
   async remove(id){ this._save(this._all().filter(o=>o.id!==id)); }
 };
 
@@ -218,6 +224,24 @@ const SupabaseDriver = {
         if(!r.ok) throw new Error('save failed');
       }
       const r2=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?id=eq.'+id,{method:'PATCH',headers:this.h(),body:JSON.stringify({updated_at:new Date().toISOString()})});
+    }
+  },
+  async saveEdit(id,fields,items){
+    const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?id=eq.'+id,{method:'PATCH',headers:this.h(),body:JSON.stringify({...fields,updated_at:new Date().toISOString()})});
+    if(!r.ok) throw new Error('save failed');
+    const hu={...this.h(),'Prefer':'return=representation,resolution=merge-duplicates'};
+    if(items.length){
+      const ur=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/order_items',{method:'POST',headers:hu,body:JSON.stringify(items.map((it,i)=>({...it,order_id:id,position:i})))});
+      if(!ur.ok) throw new Error('save failed');
+    }
+    const keepIds=items.map(it=>it.id);
+    const prev=state.orders.find(x=>x.id===id);
+    if(prev){
+      const removed=prev.items.filter(it=>!keepIds.includes(it.id)).map(it=>it.id);
+      if(removed.length){
+        const dr=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/order_items?id=in.('+removed.join(',')+')',{method:'DELETE',headers:this.h()});
+        if(!dr.ok) throw new Error('save failed');
+      }
     }
   },
   async remove(id){
@@ -312,11 +336,7 @@ function renderOrders(){
       const done=Number(it.picked)>=Number(it.qty);
       return `<div class="item ${done?'done':''}">
         <div class="inm">${esc(it.name)}${it.note?`<span class="sub">${esc(it.note)}</span>`:''}</div>
-        <div class="stepper">
-          <button onclick="bump(event,'${o.id}','${it.id}',-1)" ${Number(it.picked)<=0?'disabled':''}>−</button>
-          <span class="pv">${Number(it.picked)}/${Number(it.qty)}</span>
-          <button onclick="bump(event,'${o.id}','${it.id}',1)" ${done?'disabled':''}>+</button>
-        </div>
+        ${ticksHtml(o,it)}
       </div>`;
     }).join('');
     const meta=[o.phone?esc(o.phone):null, o.fulfillment==='delivery'&&o.address?esc(o.address):null, o.notes?esc(o.notes):null, o.created_by?('Added by '+esc(o.created_by)):null].filter(Boolean).join(' · ');
@@ -331,6 +351,7 @@ function renderOrders(){
         ${meta?`<div class="meta">${meta}</div>`:''}
         ${itemsHtml}
         <div class="acts">
+          <button class="btn" onclick="openEdit('${o.id}')">Edit</button>
           ${st!=='picked'?`<button class="btn green" onclick="markAllPicked('${o.id}')">Mark all picked</button>`:''}
           <button class="btn ${o.billed?'':'primary'}" onclick="toggleBilled('${o.id}')">${o.billed?'Mark unbilled':'Mark billed'}</button>
           <button class="btn danger" onclick="delOrder('${o.id}')">Delete</button>
@@ -342,11 +363,34 @@ function renderOrders(){
 
 function toggleOpen(id){ state.openId = state.openId===id?null:id; renderOrders(); }
 
-async function bump(ev,oid,iid,d){
+function ticksHtml(o,it){
+  const q=Number(it.qty), p=Math.max(0,Math.min(Number(it.picked),q));
+  if(q<=10){
+    let b='';
+    for(let k=1;k<=q;k++) b+=`<button class="tick ${k<=p?'on':''}" onclick="tickTo(event,'${o.id}','${it.id}',${k})" aria-label="${k} picked"></button>`;
+    return `<div class="ticks">${q>1?`<span class="tickcount">${p}/${q}</span>`:''}${b}</div>`;
+  }
+  return `<div class="stepper">
+    <button onclick="bump(event,'${o.id}','${it.id}',-1)" ${p<=0?'disabled':''}>−</button>
+    <span class="pv">${p}/${q}</span>
+    <button onclick="bump(event,'${o.id}','${it.id}',1)" ${p>=q?'disabled':''}>+</button>
+  </div>`;
+}
+function tickTo(ev,oid,iid,k){
   ev.stopPropagation();
   const o=state.orders.find(x=>x.id===oid); if(!o)return;
   const it=o.items.find(x=>String(x.id)===String(iid)); if(!it)return;
-  it.picked=Math.max(0,Math.min(Number(it.qty),Number(it.picked)+d));
+  const v = Number(it.picked)===k ? k-1 : k;
+  setPicked(oid,it,v);
+}
+function bump(ev,oid,iid,d){
+  ev.stopPropagation();
+  const o=state.orders.find(x=>x.id===oid); if(!o)return;
+  const it=o.items.find(x=>String(x.id)===String(iid)); if(!it)return;
+  setPicked(oid,it,Number(it.picked)+d);
+}
+async function setPicked(oid,it,v){
+  it.picked=Math.max(0,Math.min(Number(it.qty),v));
   renderOrders(); renderSummary();
   try{ await DB().update(oid,{items:[{id:it.id,picked:it.picked}]}); $('#syncdot').className='syncdot'; }
   catch(e){ $('#syncdot').className='syncdot off'; toast('Sync failed - will retry'); refresh(); }
@@ -377,8 +421,9 @@ async function delOrder(oid){
 
 /* ---------- new order sheet ---------- */
 function setFulfil(v){ state.fulfil=v; document.querySelectorAll('#f-fulfil button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); $('#f-addr-wrap').style.display=v==='delivery'?'block':'none'; }
-function addItemRow(name='',qty=1){
+function addItemRow(name='',qty=1,iid='',picked=0){
   const div=document.createElement('div'); div.className='irow';
+  if(iid){ div.dataset.iid=iid; div.dataset.picked=picked; }
   div.innerHTML=`<input name="iname" placeholder="Item (e.g. Challah)" list="known-items"><input name="iqty" type="number" min="1" step="1" value="${qty}"><button class="del" onclick="this.parentElement.remove()">×</button>`;
   div.querySelector('[name=iname]').value=name;
   $('#items').appendChild(div);
@@ -398,11 +443,25 @@ async function refreshKnownItems(){
   dl.innerHTML=[...names].slice(0,200).map(n=>`<option value="${esc(n)}">`).join('');
 }
 function openNew(){
+  state.editing=null;
+  $('#sheet-title').textContent='New order'; $('#savebtn').textContent='Save order';
   state.fulfil='pickup'; setFulfil('pickup');
   $('#f-customer').value=''; $('#f-phone').value=''; $('#f-address').value=''; $('#f-notes').value='';
   $('#items').innerHTML=''; addItemRow();
   $('#overlay').classList.add('open');
   setTimeout(()=>$('#f-customer').focus(),100);
+}
+function openEdit(oid){
+  const o=state.orders.find(x=>x.id===oid); if(!o)return;
+  state.editing=oid;
+  $('#sheet-title').textContent='Edit order'; $('#savebtn').textContent='Save changes';
+  $('#f-customer').value=o.customer||''; $('#f-phone').value=o.phone||''; $('#f-notes').value=o.notes||'';
+  setFulfil(o.fulfillment==='delivery'?'delivery':'pickup');
+  $('#f-address').value=o.address||'';
+  $('#items').innerHTML='';
+  o.items.forEach(it=>addItemRow(it.name,Number(it.qty),it.id,Number(it.picked)||0));
+  if(!o.items.length) addItemRow();
+  $('#overlay').classList.add('open');
 }
 function closeSheet(){ $('#overlay').classList.remove('open'); }
 
@@ -410,17 +469,33 @@ async function saveOrder(){
   const customer=$('#f-customer').value.trim();
   if(!customer){ toast('Enter a customer name'); return; }
   const items=[...document.querySelectorAll('#items .irow')].map(r=>({
-    id:uid(), name:r.querySelector('[name=iname]').value.trim(),
-    qty:Math.max(1,parseInt(r.querySelector('[name=iqty]').value)||1), picked:0
+    id:r.dataset.iid||uid(), name:r.querySelector('[name=iname]').value.trim(),
+    qty:Math.max(1,parseInt(r.querySelector('[name=iqty]') .value)||1),
+    picked:Math.min(parseInt(r.dataset.picked||'0')||0, Math.max(1,parseInt(r.querySelector('[name=iqty]').value)||1))
   })).filter(i=>i.name);
   if(!items.length){ toast('Add at least one item'); return; }
-  const o={
-    id:uid(), day:state.day, customer,
+  const fields={
+    customer,
     phone:$('#f-phone').value.trim(),
     fulfillment:state.fulfil,
     address:state.fulfil==='delivery'?$('#f-address').value.trim():'',
-    notes:$('#f-notes').value.trim(),
-    billed:false, items, created_by:state.user,
+    notes:$('#f-notes').value.trim()
+  };
+  if(state.editing){
+    const oid=state.editing;
+    const prev=state.orders.find(x=>x.id===oid);
+    if(!prev){ closeSheet(); return; }
+    const backup=JSON.parse(JSON.stringify(prev));
+    Object.assign(prev,fields); prev.items=items;
+    closeSheet();
+    renderOrders(); renderSummary();
+    try{ await DB().saveEdit(oid,fields,items); toast('Order updated'); refresh(); }
+    catch(e){ toast('Sync failed - check connection'); const i=state.orders.findIndex(x=>x.id===oid); if(i>=0)state.orders[i]=backup; renderOrders(); renderSummary(); }
+    return;
+  }
+  const o={
+    id:uid(), day:state.day, ...fields,
+    billed:false, items:items.map(it=>({...it,picked:0})), created_by:state.user,
     created_at: CONFIG.DRIVER==='supabase'?new Date().toISOString():Date.now(),
     updated_at: CONFIG.DRIVER==='supabase'?new Date().toISOString():Date.now()
   };
