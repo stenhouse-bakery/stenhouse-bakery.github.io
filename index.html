@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7c4a1e">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍞</text></svg>">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stenhouse Orders">
+<title>Stenhouse Bakery Orders</title>
+<style>
+:root{
+  --bg:#faf6f0; --card:#ffffff; --ink:#2b2118; --muted:#8a7a6a;
+  --brand:#7c4a1e; --brand-soft:#f3e4d3; --line:#e8ddd0;
+  --green:#2e7d32; --green-soft:#e2f0e3; --amber:#b26a00; --amber-soft:#fbeed3;
+  --red:#b3261e; --radius:14px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.hrow{display:flex;align-items:center;gap:10px;max-width:760px;margin:0 auto}
+.hrow h1{font-size:18px;margin:0;flex:1;font-weight:650}
+.who{font-size:12px;opacity:.9}
+.syncdot{width:8px;height:8px;border-radius:50%;background:#9fe6a0;display:inline-block;margin-right:4px}
+.syncdot.off{background:#e0a0a0}
+.daynav{display:flex;align-items:center;gap:6px;max-width:760px;margin:10px auto 0}
+.daynav button{background:rgba(255,255,255,.18);color:#fff;border-radius:8px;padding:6px 12px;font-size:16px}
+.daynav .daylabel{flex:1;text-align:center;font-size:15px;font-weight:600}
+.daynav input[type=date]{position:absolute;opacity:0;width:1px;height:1px}
+main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
+.summary{display:flex;gap:8px;margin:4px 0 12px}
+.summary div{flex:1;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:8px;text-align:center}
+.summary b{display:block;font-size:18px}
+.summary span{font-size:11px;color:var(--muted)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:4px}
+.chip{flex:0 0 auto;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:13px;color:var(--muted)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.order{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+.order-head{display:flex;align-items:center;gap:10px;padding:12px 14px;width:100%;text-align:left}
+.order-head .nm{font-weight:650;font-size:16px;flex:1}
+.badge{font-size:11px;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
+.b-pickup{background:var(--brand-soft);color:var(--brand)}
+.b-delivery{background:#e3e9f7;color:#2c4a8a}
+.b-picked{background:var(--green-soft);color:var(--green)}
+.b-part{background:var(--amber-soft);color:var(--amber)}
+.b-billed{background:#e8e8e8;color:#555}
+.order-body{border-top:1px solid var(--line);padding:10px 14px 14px;display:none}
+.order.open .order-body{display:block}
+.meta{font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.5}
+.item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.item:last-of-type{border-bottom:none}
+.item .inm{flex:1;font-size:15px}
+.item .inm .sub{display:block;font-size:12px;color:var(--muted)}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:34px;height:34px;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-size:18px;font-weight:700}
+.stepper button:disabled{opacity:.3}
+.stepper .pv{min-width:52px;text-align:center;font-size:14px;font-weight:600}
+.item.done .inm{text-decoration:line-through;color:var(--muted)}
+.acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn{padding:9px 16px;border-radius:10px;font-size:14px;font-weight:600;border:1px solid var(--line);background:var(--card)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.green{background:var(--green);border-color:var(--green);color:#fff}
+.btn.danger{color:var(--red)}
+.fab{position:fixed;right:18px;bottom:22px;z-index:30;background:var(--brand);color:#fff;border-radius:999px;padding:15px 22px;font-size:16px;font-weight:650;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.empty{text-align:center;color:var(--muted);padding:48px 16px;font-size:15px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;display:none;align-items:flex-end;justify-content:center}
+.overlay.open{display:flex}
+.sheet{background:var(--bg);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 32px}
+.sheet h2{margin:0 0 12px;font-size:18px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.fld input,.fld textarea,.fld select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:15px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;padding:10px;background:#fff;font-size:14px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--brand);color:#fff}
+.irow{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+.irow input[name=iname]{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:15px}
+.irow input[name=iqty]{width:64px;padding:9px 8px;border:1px solid var(--line);border-radius:10px;font-size:15px;text-align:center}
+.irow .del{color:var(--red);font-size:20px;padding:4px 8px}
+.loginwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.logincard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:28px 24px;width:100%;max-width:360px}
+.logincard h1{margin:0 0 4px;font-size:22px;color:var(--brand)}
+.logincard p{margin:0 0 18px;color:var(--muted);font-size:14px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;display:none}
+@media (min-width:700px){ .overlay{align-items:center} .sheet{border-radius:18px} }
+</style>
+</head>
+<body>
+
+<div id="loginview" class="loginwrap" style="display:none">
+  <div class="logincard">
+    <h1>Stenhouse Bakery</h1>
+    <p>Daily order board</p>
+    <div class="fld"><label>Your name</label><input id="login-name" placeholder="e.g. Shloime" autocomplete="name"></div>
+    <div class="fld"><label>Staff PIN</label><input id="login-pin" type="password" inputmode="numeric" placeholder="PIN"></div>
+    <button class="btn primary" style="width:100%;padding:12px" onclick="doLogin()">Open the order board</button>
+    <p id="login-err" style="color:var(--red);margin-top:10px"></p>
+  </div>
+</div>
+
+<div id="appview" style="display:none">
+<header>
+  <div class="hrow">
+    <h1>Stenhouse Bakery</h1>
+    <span class="who"><span class="syncdot" id="syncdot"></span><span id="whoname"></span></span>
+    <button style="color:#fff;font-size:12px;opacity:.85" onclick="doLogout()">Switch</button>
+  </div>
+  <div class="daynav">
+    <button onclick="shiftDay(-1)">‹</button>
+    <div class="daylabel" id="daylabel" onclick="document.getElementById('daypick').showPicker?document.getElementById('daypick').showPicker():document.getElementById('daypick').click()"></div>
+    <input type="date" id="daypick" onchange="setDay(this.value)">
+    <button onclick="goToday()" style="font-size:12px">Today</button>
+    <button onclick="shiftDay(1)">›</button>
+  </div>
+</header>
+<main>
+  <div class="summary">
+    <div><b id="c-topick">0</b><span>to pick</span></div>
+    <div><b id="c-part">0</b><span>part picked</span></div>
+    <div><b id="c-unbilled">0</b><span>picked, unbilled</span></div>
+    <div><b id="c-billed">0</b><span>billed</span></div>
+  </div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-f="all" onclick="setFilter('all')">All</button>
+    <button class="chip" data-f="topick" onclick="setFilter('topick')">To pick</button>
+    <button class="chip" data-f="unbilled" onclick="setFilter('unbilled')">Picked, not billed</button>
+    <button class="chip" data-f="billed" onclick="setFilter('billed')">Billed</button>
+  </div>
+  <div id="orders"></div>
+</main>
+<button class="fab" onclick="openNew()">+ New order</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <h2 id="sheet-title">New order</h2>
+    <div class="fld"><label>Customer name</label><input id="f-customer" placeholder="Customer name"></div>
+    <div class="fld"><label>Phone (optional)</label><input id="f-phone" type="tel" placeholder="Phone"></div>
+    <div class="fld"><label>Collection</label>
+      <div class="seg" id="f-fulfil">
+        <button data-v="pickup" class="on" onclick="setFulfil('pickup')">Pickup</button>
+        <button data-v="delivery" onclick="setFulfil('delivery')">Delivery</button>
+      </div>
+    </div>
+    <div class="fld" id="f-addr-wrap" style="display:none"><label>Delivery address</label><input id="f-address" placeholder="Address"></div>
+    <div class="fld"><label>Items</label>
+      <div id="items"></div>
+      <button class="btn" style="width:100%;margin-top:4px" onclick="addItemRow()">+ Add item</button>
+    </div>
+    <div class="fld"><label>Notes (optional)</label><textarea id="f-notes" rows="2" placeholder="Anything to remember"></textarea></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn" style="flex:1" onclick="closeSheet()">Cancel</button>
+      <button class="btn primary" style="flex:2;padding:11px" onclick="saveOrder()">Save order</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= CONFIG ================= */
+const CONFIG = {
+  DRIVER: 'supabase',            // 'local' or 'supabase'
+  SUPABASE_URL: 'https://mitljcdhlfopsqzjecxg.supabase.co',           // e.g. https://abcdefgh.supabase.co
+  SUPABASE_KEY: 'sb_publishable_1zrzqg3D7w76kf4ULjrwVA_vZGI0UD1',           // anon public key
+  POLL_MS: 4000
+};
+/* =========================================== */
+
+const $ = s => document.querySelector(s);
+const state = { day: todayStr(), filter:'all', orders:[], openId:null, user:null, fulfil:'pickup', editing:null };
+
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function uid(){ return (crypto.randomUUID?crypto.randomUUID():'id'+Date.now()+Math.random().toString(16).slice(2)); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2200); }
+
+/* ---------- drivers ---------- */
+const LocalDriver = {
+  key:'bakery-orders-v1',
+  _all(){ try{return JSON.parse(localStorage.getItem(this.key))||[]}catch(e){return[]} },
+  _save(a){ localStorage.setItem(this.key, JSON.stringify(a)); },
+  async list(day){ return this._all().filter(o=>o.day===day).sort((a,b)=>a.created_at-b.created_at); },
+  async create(o){ const a=this._all(); a.push(o); this._save(a); return o; },
+  async update(id,patch){ const a=this._all(); const i=a.findIndex(o=>o.id===id); if(i<0)return; a[i]={...a[i],...patch,updated_at:Date.now()}; this._save(a); return a[i]; },
+  async remove(id){ this._save(this._all().filter(o=>o.id!==id)); }
+};
+
+const SupabaseDriver = {
+  h(){ return {'apikey':CONFIG.SUPABASE_KEY,'Authorization':'Bearer '+CONFIG.SUPABASE_KEY,'Content-Type':'application/json','Prefer':'return=representation','x-staff-pin':(localStorage.getItem('bakery-pin')||'')}; },
+  async list(day){
+    const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?day=eq.'+day+'&select=*,order_items(*)&order=created_at.asc',{headers:this.h()});
+    if(!r.ok) throw new Error('sync failed'); const rows=await r.json();
+    return rows.map(o=>({...o, items:(o.order_items||[]).sort((a,b)=>a.position-b.position)}));
+  },
+  async create(o){
+    const {items,...ord}=o;
+    const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders',{method:'POST',headers:this.h(),body:JSON.stringify(ord)});
+    if(!r.ok) throw new Error('save failed'); const [saved]=await r.json();
+    if(items.length){
+      const ir=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/order_items',{method:'POST',headers:this.h(),body:JSON.stringify(items.map((it,i)=>({...it,order_id:saved.id,position:i})))});
+      if(!ir.ok) throw new Error('save failed');
+    }
+    return saved;
+  },
+  async update(id,patch){
+    const {items,...rest}=patch;
+    if(Object.keys(rest).length){
+      const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?id=eq.'+id,{method:'PATCH',headers:this.h(),body:JSON.stringify({...rest,updated_at:new Date().toISOString()})});
+      if(!r.ok) throw new Error('save failed');
+    }
+    if(items){
+      for(const it of items){
+        const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/order_items?id=eq.'+it.id,{method:'PATCH',headers:this.h(),body:JSON.stringify({picked:it.picked})});
+        if(!r.ok) throw new Error('save failed');
+      }
+      const r2=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?id=eq.'+id,{method:'PATCH',headers:this.h(),body:JSON.stringify({updated_at:new Date().toISOString()})});
+    }
+  },
+  async remove(id){
+    await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?id=eq.'+id,{method:'DELETE',headers:this.h()});
+  }
+};
+const DB = () => CONFIG.DRIVER==='supabase' ? SupabaseDriver : LocalDriver;
+
+/* ---------- auth ---------- */
+async function doLogin(){
+  const name=$('#login-name').value.trim(), pin=$('#login-pin').value.trim();
+  if(!name){ $('#login-err').textContent='Enter your name'; return; }
+  if(!pin){ $('#login-err').textContent='Enter the staff PIN'; return; }
+  if(CONFIG.DRIVER==='supabase'){
+    $('#login-err').textContent='Checking...';
+    try{
+      const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/rpc/check_pin',{headers:{'apikey':CONFIG.SUPABASE_KEY,'Authorization':'Bearer '+CONFIG.SUPABASE_KEY,'x-staff-pin':pin}});
+      const ok=await r.json();
+      if(ok!==true){ $('#login-err').textContent='Wrong PIN'; return; }
+    }catch(e){ $('#login-err').textContent='No connection - try again'; return; }
+  }
+  state.user=name; localStorage.setItem('bakery-user',name); localStorage.setItem('bakery-pin',pin);
+  showApp();
+}
+function doLogout(){ localStorage.removeItem('bakery-user'); localStorage.removeItem('bakery-pin'); location.reload(); }
+function showApp(){ $('#loginview').style.display='none'; $('#appview').style.display='block'; $('#whoname').textContent=state.user; render(); refresh(); startPolling(); }
+
+/* ---------- day/filter ---------- */
+function fmtDay(ds){
+  const d=new Date(ds+'T12:00:00');
+  const opts={weekday:'short',day:'numeric',month:'short'};
+  return (ds===todayStr()?'Today · ':'')+d.toLocaleDateString('en-GB',opts);
+}
+function setDay(ds){ if(!ds)return; state.day=ds; render(); refresh(); }
+function shiftDay(n){ const d=new Date(state.day+'T12:00:00'); d.setDate(d.getDate()+n); setDay(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); }
+function goToday(){ setDay(todayStr()); }
+function setFilter(f){ state.filter=f; document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.f===f)); renderOrders(); }
+
+/* ---------- data ---------- */
+async function refresh(){
+  try{
+    state.orders=await DB().list(state.day);
+    $('#syncdot').className='syncdot';
+    renderOrders(); renderSummary();
+  }catch(e){ $('#syncdot').className='syncdot off'; }
+}
+let pollTimer=null;
+function startPolling(){ if(pollTimer)clearInterval(pollTimer); pollTimer=setInterval(()=>{ if(!$('#overlay').classList.contains('open')) refresh(); },CONFIG.POLL_MS); }
+
+function orderStatus(o){
+  const tot=o.items.reduce((s,i)=>s+Number(i.qty),0);
+  const pk=o.items.reduce((s,i)=>s+Math.min(Number(i.picked),Number(i.qty)),0);
+  if(tot>0&&pk>=tot) return 'picked';
+  if(pk>0) return 'part';
+  return 'new';
+}
+
+function renderSummary(){
+  const s={topick:0,part:0,unbilled:0,billed:0};
+  for(const o of state.orders){
+    const st=orderStatus(o);
+    if(o.billed) s.billed++;
+    else if(st==='picked') s.unbilled++;
+    else if(st==='part') s.part++;
+    else s.topick++;
+  }
+  $('#c-topick').textContent=s.topick; $('#c-part').textContent=s.part;
+  $('#c-unbilled').textContent=s.unbilled; $('#c-billed').textContent=s.billed;
+}
+
+function render(){ $('#daylabel').textContent=fmtDay(state.day); $('#daypick').value=state.day; renderOrders(); renderSummary(); }
+
+function renderOrders(){
+  const wrap=$('#orders');
+  let list=state.orders;
+  if(state.filter!=='all') list=list.filter(o=>{
+    const st=orderStatus(o);
+    if(state.filter==='topick') return !o.billed&&st!=='picked';
+    if(state.filter==='unbilled') return !o.billed&&st==='picked';
+    if(state.filter==='billed') return o.billed;
+    return true;
+  });
+  if(!list.length){ wrap.innerHTML='<div class="empty">No orders '+(state.filter==='all'?'for this day yet':'in this view')+'.<br>Tap "+ New order" to add one.</div>'; return; }
+  wrap.innerHTML=list.map(o=>{
+    const st=orderStatus(o);
+    const tot=o.items.reduce((s,i)=>s+Number(i.qty),0), pk=o.items.reduce((s,i)=>s+Math.min(Number(i.picked),Number(i.qty)),0);
+    const stBadge = o.billed ? '<span class="badge b-billed">Billed</span>'
+      : st==='picked' ? '<span class="badge b-picked">Picked</span>'
+      : st==='part' ? '<span class="badge b-part">Part picked</span>' : '';
+    const open=state.openId===o.id;
+    const itemsHtml=o.items.map(it=>{
+      const done=Number(it.picked)>=Number(it.qty);
+      return `<div class="item ${done?'done':''}">
+        <div class="inm">${esc(it.name)}${it.note?`<span class="sub">${esc(it.note)}</span>`:''}</div>
+        <div class="stepper">
+          <button onclick="bump(event,'${o.id}','${it.id}',-1)" ${Number(it.picked)<=0?'disabled':''}>−</button>
+          <span class="pv">${Number(it.picked)}/${Number(it.qty)}</span>
+          <button onclick="bump(event,'${o.id}','${it.id}',1)" ${done?'disabled':''}>+</button>
+        </div>
+      </div>`;
+    }).join('');
+    const meta=[o.phone?esc(o.phone):null, o.fulfillment==='delivery'&&o.address?esc(o.address):null, o.notes?esc(o.notes):null, o.created_by?('Added by '+esc(o.created_by)):null].filter(Boolean).join(' · ');
+    return `<div class="order ${open?'open':''}">
+      <button class="order-head" onclick="toggleOpen('${o.id}')">
+        <span class="nm">${esc(o.customer)}</span>
+        <span class="badge ${o.fulfillment==='delivery'?'b-delivery':'b-pickup'}">${o.fulfillment==='delivery'?'Delivery':'Pickup'}</span>
+        ${stBadge}
+        <span style="font-size:12px;color:var(--muted)">${pk}/${tot}</span>
+      </button>
+      <div class="order-body">
+        ${meta?`<div class="meta">${meta}</div>`:''}
+        ${itemsHtml}
+        <div class="acts">
+          ${st!=='picked'?`<button class="btn green" onclick="markAllPicked('${o.id}')">Mark all picked</button>`:''}
+          <button class="btn ${o.billed?'':'primary'}" onclick="toggleBilled('${o.id}')">${o.billed?'Mark unbilled':'Mark billed'}</button>
+          <button class="btn danger" onclick="delOrder('${o.id}')">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleOpen(id){ state.openId = state.openId===id?null:id; renderOrders(); }
+
+async function bump(ev,oid,iid,d){
+  ev.stopPropagation();
+  const o=state.orders.find(x=>x.id===oid); if(!o)return;
+  const it=o.items.find(x=>String(x.id)===String(iid)); if(!it)return;
+  it.picked=Math.max(0,Math.min(Number(it.qty),Number(it.picked)+d));
+  renderOrders(); renderSummary();
+  try{ await DB().update(oid,{items:[{id:it.id,picked:it.picked}]}); $('#syncdot').className='syncdot'; }
+  catch(e){ $('#syncdot').className='syncdot off'; toast('Sync failed - will retry'); refresh(); }
+}
+
+async function markAllPicked(oid){
+  const o=state.orders.find(x=>x.id===oid); if(!o)return;
+  o.items.forEach(it=>it.picked=Number(it.qty));
+  renderOrders(); renderSummary();
+  try{ await DB().update(oid,{items:o.items.map(it=>({id:it.id,picked:it.picked}))}); toast('Order picked'); }
+  catch(e){ toast('Sync failed'); refresh(); }
+}
+
+async function toggleBilled(oid){
+  const o=state.orders.find(x=>x.id===oid); if(!o)return;
+  o.billed=!o.billed;
+  renderOrders(); renderSummary();
+  try{ await DB().update(oid,{billed:o.billed}); toast(o.billed?'Marked billed':'Back to unbilled'); }
+  catch(e){ toast('Sync failed'); refresh(); }
+}
+
+async function delOrder(oid){
+  if(!confirm('Delete this order?'))return;
+  state.orders=state.orders.filter(x=>x.id!==oid);
+  renderOrders(); renderSummary();
+  try{ await DB().remove(oid); }catch(e){ toast('Sync failed'); refresh(); }
+}
+
+/* ---------- new order sheet ---------- */
+function setFulfil(v){ state.fulfil=v; document.querySelectorAll('#f-fulfil button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); $('#f-addr-wrap').style.display=v==='delivery'?'block':'none'; }
+function addItemRow(name='',qty=1){
+  const div=document.createElement('div'); div.className='irow';
+  div.innerHTML=`<input name="iname" placeholder="Item (e.g. Challah)" list="known-items"><input name="iqty" type="number" min="1" step="1" value="${qty}"><button class="del" onclick="this.parentElement.remove()">×</button>`;
+  div.querySelector('[name=iname]').value=name;
+  $('#items').appendChild(div);
+  refreshKnownItems();
+}
+async function refreshKnownItems(){
+  let dl=document.getElementById('known-items');
+  if(!dl){ dl=document.createElement('datalist'); dl.id='known-items'; document.body.appendChild(dl); }
+  const names=new Set();
+  try{
+    let all=[];
+    if(CONFIG.DRIVER==='supabase'){
+      const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/order_items?select=name&limit=500',{headers:SupabaseDriver.h()});
+      if(r.ok) (await r.json()).forEach(x=>names.add(x.name));
+    } else { LocalDriver._all().forEach(o=>o.items.forEach(i=>names.add(i.name))); }
+  }catch(e){}
+  dl.innerHTML=[...names].slice(0,200).map(n=>`<option value="${esc(n)}">`).join('');
+}
+function openNew(){
+  state.fulfil='pickup'; setFulfil('pickup');
+  $('#f-customer').value=''; $('#f-phone').value=''; $('#f-address').value=''; $('#f-notes').value='';
+  $('#items').innerHTML=''; addItemRow();
+  $('#overlay').classList.add('open');
+  setTimeout(()=>$('#f-customer').focus(),100);
+}
+function closeSheet(){ $('#overlay').classList.remove('open'); }
+
+async function saveOrder(){
+  const customer=$('#f-customer').value.trim();
+  if(!customer){ toast('Enter a customer name'); return; }
+  const items=[...document.querySelectorAll('#items .irow')].map(r=>({
+    id:uid(), name:r.querySelector('[name=iname]').value.trim(),
+    qty:Math.max(1,parseInt(r.querySelector('[name=iqty]').value)||1), picked:0
+  })).filter(i=>i.name);
+  if(!items.length){ toast('Add at least one item'); return; }
+  const o={
+    id:uid(), day:state.day, customer,
+    phone:$('#f-phone').value.trim(),
+    fulfillment:state.fulfil,
+    address:state.fulfil==='delivery'?$('#f-address').value.trim():'',
+    notes:$('#f-notes').value.trim(),
+    billed:false, items, created_by:state.user,
+    created_at: CONFIG.DRIVER==='supabase'?new Date().toISOString():Date.now(),
+    updated_at: CONFIG.DRIVER==='supabase'?new Date().toISOString():Date.now()
+  };
+  closeSheet();
+  state.orders.push(o); state.openId=o.id; renderOrders(); renderSummary();
+  try{ await DB().create(o); toast('Order saved'); refresh(); }
+  catch(e){ toast('Sync failed - check connection'); state.orders=state.orders.filter(x=>x.id!==o.id); renderOrders(); }
+}
+
+/* ---------- boot ---------- */
+(function(){
+  const u=localStorage.getItem('bakery-user');
+  if(u){ state.user=u; showApp(); } else { $('#loginview').style.display='flex'; }
+  $('#login-pin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refresh(); });
+  $('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeSheet(); });
+})();
+</script>
+</body>
+</html>
