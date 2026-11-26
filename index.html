@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Stenhouse Orders">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>Stenhouse Bakery Orders</title>
 <style>
 :root{
@@ -711,6 +713,24 @@ async function saveOrder(){
   $('#login-pin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshCurrent(); });
   $('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeSheet(); });
+})();
+</script>
+<script>
+/* auto-update: reload when a newer version is published */
+(function(){
+  var BUILD="20261126b";
+  var busy=false;
+  function check(){
+    if(busy) return; busy=true;
+    fetch(location.pathname+"?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){
+      var m=t.match(/var BUILD="([^"]+)"/);
+      if(m && m[1]!==BUILD){ location.replace(location.pathname+"?v="+m[1]); }
+    }).catch(function(){}).then(function(){busy=false});
+  }
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) check(); });
+  window.addEventListener("pageshow",check);
+  setInterval(check,300000);
+  check();
 })();
 </script>
 </body>
