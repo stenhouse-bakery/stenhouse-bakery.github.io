@@ -248,6 +248,10 @@ const SupabaseDriver = {
       const ir=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/order_items',{method:'POST',headers:this.h(),body:JSON.stringify(items.map((it,i)=>({...it,order_id:saved.id,position:i})))});
       if(!ir.ok) throw new Error('save failed');
     }
+    try{
+      fetch(CONFIG.SUPABASE_URL+'/functions/v1/order-email',{method:'POST',headers:{'Content-Type':'application/json','x-staff-pin':(localStorage.getItem('bakery-pin')||'')},body:JSON.stringify({order_id:saved.id})})
+        .then(function(r){ if(!r.ok) r.text().then(function(t){ console.warn('order email failed',r.status,t); }); });
+    }catch(e){ console.warn('order email failed',e); }
     return saved;
   },
   async update(id,patch){
