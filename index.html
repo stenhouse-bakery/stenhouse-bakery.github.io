@@ -54,6 +54,7 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
 .item:last-of-type{border-bottom:none}
 .item .inm{flex:1;font-size:15px}
 .item .inm .sub{display:block;font-size:12px;color:var(--muted)}
+.qtybadge{display:inline-block;font-size:12px;font-weight:700;color:var(--brand);background:var(--brand-soft);border-radius:6px;padding:1px 7px;margin-left:6px;vertical-align:1px}
 .stepper{display:flex;align-items:center;gap:6px}
 .stepper button{width:34px;height:34px;border-radius:10px;background:var(--brand-soft);color:var(--brand);font-size:18px;font-weight:700}
 .stepper button:disabled{opacity:.3}
@@ -335,7 +336,7 @@ function renderOrders(){
     const itemsHtml=o.items.map(it=>{
       const done=Number(it.picked)>=Number(it.qty);
       return `<div class="item ${done?'done':''}">
-        <div class="inm">${esc(it.name)}${it.note?`<span class="sub">${esc(it.note)}</span>`:''}</div>
+        <div class="inm">${esc(it.name)}<span class="qtybadge">×${Number(it.qty)}</span>${it.note?`<span class="sub">${esc(it.note)}</span>`:''}</div>
         ${ticksHtml(o,it)}
       </div>`;
     }).join('');
@@ -364,30 +365,15 @@ function renderOrders(){
 function toggleOpen(id){ state.openId = state.openId===id?null:id; renderOrders(); }
 
 function ticksHtml(o,it){
-  const q=Number(it.qty), p=Math.max(0,Math.min(Number(it.picked),q));
-  if(q<=10){
-    let b='';
-    for(let k=1;k<=q;k++) b+=`<button class="tick ${k<=p?'on':''}" onclick="tickTo(event,'${o.id}','${it.id}',${k})" aria-label="${k} picked"></button>`;
-    return `<div class="ticks">${q>1?`<span class="tickcount">${p}/${q}</span>`:''}${b}</div>`;
-  }
-  return `<div class="stepper">
-    <button onclick="bump(event,'${o.id}','${it.id}',-1)" ${p<=0?'disabled':''}>−</button>
-    <span class="pv">${p}/${q}</span>
-    <button onclick="bump(event,'${o.id}','${it.id}',1)" ${p>=q?'disabled':''}>+</button>
-  </div>`;
+  const done=Number(it.picked)>=Number(it.qty);
+  return `<div class="ticks"><button class="tick ${done?'on':''}" onclick="togglePicked(event,'${o.id}','${it.id}')" aria-label="Mark picked"></button></div>`;
 }
-function tickTo(ev,oid,iid,k){
+function togglePicked(ev,oid,iid){
   ev.stopPropagation();
   const o=state.orders.find(x=>x.id===oid); if(!o)return;
   const it=o.items.find(x=>String(x.id)===String(iid)); if(!it)return;
-  const v = Number(it.picked)===k ? k-1 : k;
-  setPicked(oid,it,v);
-}
-function bump(ev,oid,iid,d){
-  ev.stopPropagation();
-  const o=state.orders.find(x=>x.id===oid); if(!o)return;
-  const it=o.items.find(x=>String(x.id)===String(iid)); if(!it)return;
-  setPicked(oid,it,Number(it.picked)+d);
+  const done=Number(it.picked)>=Number(it.qty);
+  setPicked(oid,it,done?0:Number(it.qty));
 }
 async function setPicked(oid,it,v){
   it.picked=Math.max(0,Math.min(Number(it.qty),v));
