@@ -169,6 +169,7 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
 <div class="overlay" id="overlay">
   <div class="sheet">
     <h2 id="sheet-title">New order</h2>
+    <div class="fld" id="f-date-wrap"><label>Order date</label><input id="f-date" type="date" onchange="if(this.value)$('#f-weekday').value=String(weekdayOf(this.value))"></div>
     <div class="fld"><label>Customer name</label><input id="f-customer" placeholder="Customer name"></div>
     <div class="fld"><label>Phone (optional)</label><input id="f-phone" type="tel" placeholder="Phone"></div>
     <div class="fld"><label>Collection</label>
@@ -611,13 +612,14 @@ function openNew(){
   $('#f-customer').value=''; $('#f-phone').value=''; $('#f-address').value=''; $('#f-notes').value='';
   $('#items').innerHTML=''; addItemRow();
   $('#f-repeat-wrap').style.display=CONFIG.DRIVER==='supabase'?'block':'none';
+  $('#f-date-wrap').style.display='block'; $('#f-date').value=state.day;
   $('#f-repeat').checked=false; $('#f-weekday').value=String(weekdayOf(state.day)); repeatChanged();
   $('#overlay').classList.add('open');
   setTimeout(()=>$('#f-customer').focus(),100);
 }
 function openEdit(oid){
   const o=state.orders.find(x=>x.id===oid); if(!o)return;
-  state.editing=oid;
+  state.editing=oid; $('#f-date-wrap').style.display='none';
   $('#sheet-title').textContent='Edit order'; $('#savebtn').textContent='Save changes';
   $('#f-customer').value=o.customer||''; $('#f-phone').value=o.phone||''; $('#f-notes').value=o.notes||'';
   setFulfil(o.fulfillment==='delivery'?'delivery':'pickup');
@@ -677,13 +679,15 @@ async function saveOrder(){
     catch(e){ toast('Sync failed - check connection'); const i=state.orders.findIndex(x=>x.id===oid); if(i>=0)state.orders[i]=backup; renderOrders(); renderSummary(); }
     return;
   }
+  const pickedDay=$('#f-date').value||state.day;
   const o={
-    id:uid(), day:state.day, ...fields,
+    id:uid(), day:pickedDay, ...fields,
     billed:false, items:items.map(it=>({...it,picked:0})), created_by:state.user,
     created_at: CONFIG.DRIVER==='supabase'?new Date().toISOString():Date.now(),
     updated_at: CONFIG.DRIVER==='supabase'?new Date().toISOString():Date.now()
   };
   closeSheet();
+  if(o.day!==state.day){ state.day=o.day; state.orders=[]; render(); }
   state.orders.push(o); state.openId=o.id; renderOrders(); renderSummary();
   try{
     await DB().create(o);
