@@ -97,6 +97,24 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
 .logincard h1{margin:0 0 4px;font-size:22px;color:var(--brand)}
 .logincard p{margin:0 0 18px;color:var(--muted);font-size:14px}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:60;display:none}
+#calbtn{color:#fff;font-size:17px;padding:4px 8px;border-radius:8px;line-height:1}
+#calbtn.on{background:rgba(255,255,255,.25)}
+.calhead{display:flex;align-items:center;gap:8px;margin:2px 0 10px}
+.calhead button{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 14px;font-size:16px}
+.calhead .callabel{flex:1;text-align:center;font-size:16px;font-weight:650}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calwk{text-align:center;font-size:11px;color:var(--muted);font-weight:650;padding:2px 0}
+.calcell{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:54px;padding:4px 5px;display:flex;flex-direction:column;width:100%;text-align:left;color:inherit;font:inherit}
+.calcell.dim{background:transparent;border-color:transparent}
+.calcell.today{border-color:var(--brand);border-width:2px}
+.calcell.sel{background:var(--brand-soft)}
+.calcell .dnum{font-size:12px;font-weight:600;color:var(--muted)}
+.calcell.today .dnum{color:var(--brand)}
+.calbot{margin-top:auto;display:flex;gap:4px;align-items:center;align-self:flex-end}
+.calcount{font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--brand);color:#fff}
+.calcount.cc-picked{background:var(--green)}
+.calcount.cc-billed{background:#9a9a9a}
+.calcdot{width:7px;height:7px;border-radius:50%;background:#6b3fa0}
 @media (min-width:700px){ .overlay{align-items:center} .sheet{border-radius:18px} }
 </style>
 </head>
@@ -117,6 +135,7 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
 <header>
   <div class="hrow">
     <h1>Stenhouse Bakery</h1>
+    <button id="calbtn" onclick="toggleCal()" title="Calendar view" aria-label="Calendar view">&#128197;</button>
     <span class="who"><span class="syncdot" id="syncdot"></span><span id="whoname"></span></span>
     <button style="color:#fff;font-size:12px;opacity:.85" onclick="doLogout()">Switch</button>
   </div>
@@ -142,6 +161,7 @@ main{max-width:760px;margin:0 auto;padding:12px 12px 96px}
     <button class="chip" data-f="billed" onclick="setFilter('billed')">Billed</button>
   </div>
   <div id="orders"></div>
+  <div id="calview" style="display:none"></div>
 </main>
 <button class="fab" onclick="openNew()">+ New order</button>
 </div>
@@ -194,7 +214,7 @@ const CONFIG = {
 /* =========================================== */
 
 const $ = s => document.querySelector(s);
-const state = { day: todayStr(), filter:'all', orders:[], openId:null, user:null, fulfil:'pickup', editing:null, templates:[] };
+const state = { day: todayStr(), filter:'all', orders:[], openId:null, user:null, fulfil:'pickup', editing:null, templates:[], view:'day', calMonth:'', calData:{} };
 
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function uid(){ return (crypto.randomUUID?crypto.randomUUID():'id'+Date.now()+Math.random().toString(16).slice(2)); }
@@ -308,6 +328,87 @@ function fmtDay(ds){
 function setDay(ds){ if(!ds)return; state.day=ds; render(); refresh(); }
 function shiftDay(n){ const d=new Date(state.day+'T12:00:00'); d.setDate(d.getDate()+n); setDay(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); }
 function goToday(){ setDay(todayStr()); }
+
+/* ---------- calendar view ---------- */
+function monthRange(m){ const y=+m.slice(0,4), mo=+m.slice(5,7); const lastD=new Date(y,mo,0).getDate(); return [m+'-01', m+'-'+String(lastD).padStart(2,'0')]; }
+function setView(v){
+  state.view=v;
+  const cal=v==='cal';
+  document.querySelector('.daynav').style.display=cal?'none':'flex';
+  document.querySelector('.summary').style.display=cal?'none':'flex';
+  $('#chips').style.display=cal?'none':'flex';
+  $('#orders').style.display=cal?'none':'block';
+  $('#calview').style.display=cal?'block':'none';
+  document.querySelector('.fab').style.display=cal?'none':'block';
+  $('#calbtn').classList.toggle('on',cal);
+  if(cal) loadCal(); else { render(); refresh(); }
+}
+function toggleCal(){
+  if(state.view==='cal'){ setView('day'); return; }
+  state.calMonth=state.day.slice(0,7);
+  setView('cal');
+}
+function calShift(n){ const d=new Date(state.calMonth+'-01T12:00:00'); d.setMonth(d.getMonth()+n); state.calMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); loadCal(); }
+function calPick(ds){ state.day=ds; setView('day'); }
+function refreshCurrent(){ if(state.view==='cal') loadCal(); else refresh(); }
+async function loadCal(){
+  const [first,last]=monthRange(state.calMonth);
+  try{
+    if(CONFIG.DRIVER==='supabase'){
+      const r=await fetch(CONFIG.SUPABASE_URL+'/rest/v1/orders?day=gte.'+first+'&day=lte.'+last+'&select=id,day,billed,standing_id,order_items(qty,picked)&order=day.asc&limit=1000',{headers:SupabaseDriver.h()});
+      if(!r.ok) throw new Error('sync failed');
+      const rows=await r.json();
+      const byDay={};
+      rows.forEach(o=>{ (byDay[o.day]=byDay[o.day]||[]).push(o); });
+      state.calData=byDay;
+      try{ state.templates=await SupabaseDriver.listTemplates(); }catch(e){}
+    } else {
+      const byDay={};
+      LocalDriver._all().forEach(o=>{ if(o.day>=first&&o.day<=last) (byDay[o.day]=byDay[o.day]||[]).push(o); });
+      state.calData=byDay;
+    }
+    $('#syncdot').className='syncdot';
+  }catch(e){ $('#syncdot').className='syncdot off'; }
+  renderCal();
+}
+function renderCal(){
+  const m=state.calMonth||state.day.slice(0,7);
+  const [first,last]=monthRange(m);
+  const firstPad=(weekdayOf(first)+6)%7;
+  const daysInMonth=Number(last.slice(8));
+  const today=todayStr();
+  let html=`<div class="calhead"><button onclick="calShift(-1)" aria-label="Previous month">&lsaquo;</button><div class="callabel">${new Date(m+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div><button onclick="calShift(1)" aria-label="Next month">&rsaquo;</button></div>`;
+  html+='<div class="calgrid">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(w=>`<div class="calwk">${w}</div>`).join('');
+  for(let i=0;i<firstPad;i++) html+='<div class="calcell dim"></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=m+'-'+String(d).padStart(2,'0');
+    const orders=state.calData[ds]||[];
+    let extra=0;
+    if(ds>=today&&CONFIG.DRIVER==='supabase'){
+      const wd=weekdayOf(ds);
+      for(const t of (state.templates||[])){
+        if(Number(t.weekday)!==wd) continue;
+        if(t.start_day&&ds<t.start_day) continue;
+        if((t.skipped_days||[]).includes(ds)) continue;
+        if(orders.some(o=>o.standing_id===t.id)) continue;
+        extra++;
+      }
+    }
+    const count=orders.length+extra;
+    const standingDot=extra>0||orders.some(o=>o.standing_id);
+    let cc='';
+    if(count>0&&extra===0&&orders.length>0){
+      if(orders.every(o=>o.billed)) cc='cc-billed';
+      else if(orders.every(o=>{const ii=o.order_items||o.items||[]; return ii.length>0&&ii.every(x=>Number(x.picked)>=Number(x.qty));})) cc='cc-picked';
+    }
+    let cls='calcell';
+    if(ds===today) cls+=' today';
+    if(ds===state.day) cls+=' sel';
+    html+=`<button class="${cls}" onclick="calPick('${ds}')"><span class="dnum">${d}</span>${count?`<span class="calbot"><span class="calcount ${cc}">${count}</span>${standingDot?'<span class="calcdot" title="Standing order"></span>':''}</span>`:''}</button>`;
+  }
+  html+='</div><div style="font-size:12px;color:var(--muted);margin-top:10px;text-align:center">Tap a day to open it</div>';
+  $('#calview').innerHTML=html;
+}
 function setFilter(f){ state.filter=f; document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.f===f)); renderOrders(); }
 function weekdayOf(ds){ return new Date(ds+'T12:00:00').getDay(); }
 function repeatChanged(){ const on=$('#f-repeat').checked; $('#f-weekday').disabled=!on; $('#f-repeat-hint').style.display=on?'block':'none'; }
@@ -345,7 +446,7 @@ async function refresh(){
   }catch(e){ $('#syncdot').className='syncdot off'; }
 }
 let pollTimer=null;
-function startPolling(){ if(pollTimer)clearInterval(pollTimer); pollTimer=setInterval(()=>{ if(!$('#overlay').classList.contains('open')) refresh(); },CONFIG.POLL_MS); }
+function startPolling(){ if(pollTimer)clearInterval(pollTimer); pollTimer=setInterval(()=>{ if(!$('#overlay').classList.contains('open')) refreshCurrent(); },CONFIG.POLL_MS); }
 
 function orderStatus(o){
   const tot=o.items.reduce((s,i)=>s+Number(i.qty),0);
@@ -600,7 +701,7 @@ async function saveOrder(){
   const u=localStorage.getItem('bakery-user');
   if(u){ state.user=u; showApp(); } else { $('#loginview').style.display='flex'; }
   $('#login-pin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refresh(); });
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshCurrent(); });
   $('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeSheet(); });
 })();
 </script>
